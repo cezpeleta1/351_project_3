@@ -10,7 +10,6 @@
 
 using namespace std;
 
-#define BUF_SIZE 4096
 
 int main(int argc, char** argv)
 {
@@ -18,88 +17,87 @@ int main(int argc, char** argv)
 	if (argc < 2)
 	{
 		cout << "FILE NAME missing\n";
-
 		exit(1);
 	}
 
-	/* Open the specified file */
-	int in_fd = open(argv[1], O_RDWR);
-	int out_fd = open(argv[2], O_RDWR | O_CREAT);
+	/* Open the input file */
+	int inFile = open(argv[1], O_RDWR);
 
 
-	if (in_fd < 0)
+	if (inFile < 0)
 	{
-		cout << "\n" << "input file cannot be opened" << "\n";
-		exit(1); //it it cannot be opened, exit
+		cout << "\n" << "Input file cannot be opened." << "\n";
+		exit(1);
 	}
 
-	if (out_fd < 0) {
-			cout << "\n" << "output file cannot be created" << "\n";
-			exit(1);        // if it cannot be created, exit
+	/* Open the output file */
+	int outFile = open(argv[2], O_RDWR | O_CREAT| O_TRUNC, 0666);
+
+	if (outFile < 0)
+	{
+		cout << "\n" << "Output file cannot be opened not created." << "\n";
+		exit(1);
 	}
 
 	struct stat stats;
 	if (stat(argv[1], &stats) == 0)
-		cout << endl << "file size " << stats.st_size;
+		cout << "File Size = " << stats.st_size << endl;
 	else
 		cout << "Unable to get file properties.\n";
 
 	/* Get the page size  */
 	int pagesize = getpagesize();
-	cout << endl << "page size is " << pagesize << "\n";
+	cout << "Page Size = " << pagesize << "\n";
 
-//filesize
-int filesize = stats.st_size;
+	/* go to the location corresponding to the last byte */
+	 if (lseek (outFile, stats.st_size - 1, SEEK_SET) == -1)
+	 {
+	   printf ("lseek error\n");
+	   exit(0);
+	 }
 
-	/* map the file into memory */
-	char* data = (char*)mmap(NULL, pagesize, PROT_READ | PROT_WRITE, MAP_SHARED, in_fd, 0);
+ /* write a dummy byte at the last location */
+ 	write (outFile, "", 1);
 
-	/* map the file into memory */
-	char* newCopy = (char*)mmap(NULL, pagesize, PROT_READ | PROT_WRITE, MAP_SHARED, out_fd, 0);
-
-
-  char buffer[BUF_SIZE];
-	/* Did the mapping succeed ? */
-	if (!data)
-	{
-		cout << "\n" << "mapping did not succeed" << "\n";
-		exit(1);
-	}
- int rd_count, wt_count;
-	while (pagesize < filesize) {
-			rd_count = read(in_fd, buffer, BUF_SIZE);
-			if (rd_count <= 0) {   // if end of file or error
-
-
-					break;
-			}
-			/*cout<<"\n "<<"counting.......";
-			cout<<"\n"<<buffer;*/
-			wt_count = write(out_fd, buffer, rd_count);
-			if (wt_count <= 0) {  // if error
-					cout << "\n" << "error on writing...exiting" << "\n";
-					exit(1);
-			}
-
-	/* Print the whole file character-by-character */
-	for (int fIndex = 0; fIndex < pagesize; ++fIndex)
+	for (int fIndex = 0; fIndex < stats.st_size; fIndex += pagesize)
 	{
 
-		cout << data[fIndex];
+		/* map input file into memory */
+		char* inData = (char*) mmap(NULL, pagesize, PROT_READ | PROT_WRITE, MAP_SHARED, inFile, fIndex);
 
+		/* Did the mapping succeed ? */
+		if (!inData)
+		{
+			cout << "\n" << "mapping did not succeed" << "\n";
+			exit(1);
+		}
+
+		// Print the whole file character-by-character //
+		/*for (int index = 0; fIndex < pagesize; ++fIndex)
+		{
+			cout << inData[index];
+		}
+		cout << endl;*/
+
+		// map output file into memory //
+		char* outData = (char*) mmap(NULL, pagesize, PROT_READ | PROT_WRITE, MAP_SHARED, outFile, fIndex);
+
+		// Did the mapping succeed ? //
+		if (!outData)
+		{
+			cout << "\n" << "mapping did not succeed" << "\n";
+			exit(1);
+		}
+
+		memcpy(outData, inData, pagesize);
+
+		munmap(inData, pagesize);
+		munmap(outData, pagesize);
 	}
-	cout << endl;
-	/* Write a string to the mapped region */
-//memcpy(data, "Hello world, this is a test\n", sizeof("Hello world, this is a test"));*/
-
-	/* Unmap the shared memory region */
-	munmap(data, pagesize);
-
 
 	/* Close the file */
-	close(in_fd);
-	close(out_fd);
+	close(inFile);
+	close(outFile);
 
 	return 0;
-}
 }
